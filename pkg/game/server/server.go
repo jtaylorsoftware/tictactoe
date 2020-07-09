@@ -93,18 +93,18 @@ func (server *Server) Listen(port int) {
 }
 
 func (server *Server) handleConnection(conn net.Conn) {
-	lobby := server.nextAvailableLobby()
-	if lobby == nil {
-		server.logger.Println("received connection but could not find an open lobby")
-		conn.Close()
-		return
-	}
 	server.logger.Println("received connection")
 
 	// Wrap in utility Conn type
 	playerConn := player.NewConn(conn)
 
 	if ok := confirmConnection(playerConn); ok {
+		lobby := server.nextAvailableLobby()
+		if lobby == nil {
+			server.logger.Println("received connection but could not find an open lobby")
+			conn.Close()
+			return
+		}
 		if err := lobby.AddPlayer(playerConn); err != nil {
 			server.logger.Println("error adding a client to lobby", err)
 			conn.Close()
