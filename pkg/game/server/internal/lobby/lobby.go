@@ -82,8 +82,20 @@ func (lobby *Lobby) AddPlayer(conn player.Conn) error {
 
 func (lobby *Lobby) stop() {
 	lobby.playing = false
-	lobby.logln("stopping")
+	lobby.logln("stopping...")
 	// TODO - gracefully shut down & tell any connected players lobby shut down
+	// maybe add option to rematch
+	for i := 0; i < lobby.players.Size(); i++ {
+		player := lobby.players.At(i)
+		lobby.removePlayer(player, "lobby stopping")
+	}
+	lobby.logln("resetting...")
+	lobby.reset()
+}
+
+func (lobby *Lobby) reset() {
+	lobby.board = board.New()
+	lobby.currentPlayer = -1
 }
 
 func (lobby *Lobby) play() {
@@ -109,12 +121,14 @@ func (lobby *Lobby) play() {
 		for ; attempts < config.MaxTurnAttempts; attempts++ {
 			s, err := player.Conn.ReadString()
 			if err != nil {
-				lobby.logln(err)
+				lobby.logln("error in move from", player.Token, ":", err)
 				continue
 			}
 			msg, err := message.ParseTurnInfo(s)
 			if err != nil {
-				lobby.logln(err)
+				lobby.logln("error in move from", player.Token, ":", err)
+				// TODO - check write error
+				player.Conn.WriteString("INVALID FORMAT\n")
 				continue
 			}
 			lobby.log(msg)
@@ -154,7 +168,9 @@ func (lobby *Lobby) play() {
 		if attempts == config.MaxTurnAttempts {
 			// assume player was trying to cheat and remove them
 			lobby.removePlayer(player, "too many invalid moves")
+			// stop game and return, no winner
 			lobby.stop()
+			return
 		}
 	}
 	// notify players of winner and shut down
@@ -202,9 +218,12 @@ func (lobby *Lobby) nextPlayer() *player.Player {
 }
 
 func (lobby *Lobby) removePlayer(p *player.Player, why string) {
-	lobby.logln("removing player ", p.ID, ", ", why)
-	lobby.players.Remove(p.ID)
+	if p == nil {
+		return
+	}
+	lobby.log("removing player ", p.ID, ", ", why, "\n")
 	p.Conn.Close()
+	lobby.players.Remove(p.ID)
 }
 
 func (lobby *Lobby) log(args ...interface{}) {
