@@ -1,18 +1,19 @@
-APP = tictactoe
-BINARY_PATH = $$GOBIN/$(APP)
+APP=tictactoe
+HOST_PORT=5432
+CONTAINER_PORT=5432
 
+.PHONY: build
 build:
-	@go build -o  bin/ . 2>make.log
-	@echo "built $(APP) to bin/" | tee make.log
+	docker build -t $(APP) -f build/Dockerfile .
+build-dev:
+	mkdir -p bin && go build -o bin/ . 
 clean:
-	@go clean 
-install:
-	@go install . 2>make.log
-	@echo installed to $(BINARY_PATH) | tee make.log
-uninstall:
-	$(eval RET := $(shell rm $(BINARY_PATH) 2>make.log; echo $$?))
-	@if [ $(RET) -eq 1 ]; then	\
-		echo "failed to uninstall $(BINARY_PATH) - see make.log";	\
-	else	\
-		echo "uninstalled $(APP)";	\
-	fi;
+	go clean .
+	rm bin/$(APP)
+	docker rm $(APP)
+run:
+	docker run -a stdout --rm -p=$(HOST_PORT):$(CONTAINER_PORT) --name="$(APP)" $(APP)
+run-dev:
+	bin/$(APP)
+stop:
+	docker stop $(APP)
