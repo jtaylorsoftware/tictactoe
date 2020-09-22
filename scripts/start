@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+
+APP=tictactoe
+HOST_PORT=5432
+CONTAINER_PORT=5432
+
+TARGETENV=${1,,}
+
+if [[ $# -eq 0 ]]; then 
+    if [[ ! -v ENV ]]; then
+        >&2 echo 'Error: ENV must be set to "local" or "container" if not given as an argument'
+        exit 1
+    fi
+    TARGETENV=$ENV
+elif [[ $TARGETENV == "local" ]]; then 
+    exec $APP
+elif [[ $TARGETENV == "container" ]]; then
+    sudo docker run -a stdout --rm -p=$HOST_PORT:$CONTAINER_PORT --name="$APP" $APP
+else 
+    >&2 echo 'Error: Valid values for ENV are "local" or "container"'
+    exit 1
+fi
