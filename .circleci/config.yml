@@ -9,7 +9,7 @@ jobs:
     machine: true
     steps:
       - checkout
-      - run: docker build -t $IMAGE_TAG .
+      - run: docker build -t $IMAGE_TAG -f build/Dockerfile .
       - run: docker push $IMAGE_TAG
 
 # Invoke jobs via workflows
