@@ -9,13 +9,19 @@ jobs:
     machine: true
     steps:
       - checkout
+      # Login to ghcr
+      - run: |
+          echo "$GHCR_PAT" | docker login ghcr.io -u jtaylorsoftware --password-stdin
+      # Build image
       - run: docker build -t $IMAGE_TAG -f build/Dockerfile .
+      # Publish to ghcr
       - run: docker push $IMAGE_TAG
 
 # Invoke jobs via workflows
 # See: https://circleci.com/docs/2.0/configuration-reference/#workflows
 workflows:
-  sample: # This is the name of the workflow, feel free to change it to better match your workflow.
-    # Inside the workflow, you define the jobs you want to run.
+  build:
     jobs:
-      - build
+      - build:
+          context:
+            - ghcr
