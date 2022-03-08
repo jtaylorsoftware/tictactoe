@@ -1,9 +1,40 @@
 package main
 
-import game "github.com/jeremyt135/tictactoe/pkg/game/server"
+import (
+	"log"
+
+	"go.uber.org/zap"
+
+	"github.com/jeremyt135/tictactoe/pkg/server"
+)
+
+func setupLogger() *zap.SugaredLogger {
+	logger, err := zap.NewDevelopment()
+	if err != nil {
+		log.Fatalln("Could not create logger:", err)
+	}
+	sugar := logger.Sugar()
+	return sugar
+}
 
 func main() {
-	server := game.NewServer(game.DefaultOptions())
-	defer server.Close()
-	server.Listen(5432)
+	logger := setupLogger()
+	defer logger.Sync()
+
+	srv, err := server.NewServer(&server.Options{
+		NumLobbies: 2,
+		Logger:     logger,
+	})
+	if err != nil {
+		log.Fatalln(err)
+	}
+
+	l, err := server.ListenTcp(5432, logger)
+	if err != nil {
+		log.Fatalln(l)
+	}
+
+	if err := srv.Serve(l); err != nil {
+		log.Fatalln(err)
+	}
 }

@@ -2,8 +2,7 @@ package player
 
 import (
 	"errors"
-
-	"github.com/jeremyt135/tictactoe/pkg/game/server/internal/config"
+	"github.com/jeremyt135/tictactoe/pkg/server/internal/config"
 )
 
 // Array provides methods for manipulating an array of Players.
@@ -22,8 +21,8 @@ type FixedArray struct {
 	count   int
 }
 
-// NewArray returns a struct implementing the Array interface.
-func NewArray() Array {
+// NewFixedArray returns a FixedArray struct implementing the Array interface.
+func NewFixedArray() Array {
 	return &FixedArray{}
 }
 
@@ -73,9 +72,6 @@ func (arr *FixedArray) IsFull() bool {
 }
 
 // Size returns the number of players actually stored in the FixedArray.
-func (arr *FixedArray) Size() (s int) {
-	for range arr.players {
-		s++
-	}
-	return
+func (arr *FixedArray) Size() int {
+	return arr.count
 }

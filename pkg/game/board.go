@@ -1,13 +1,18 @@
-package board
+// Package game provides types for playing a game of Tic-tac-toe and maintaining board state.
+package game
 
-import "fmt"
+import (
+	"fmt"
+
+	"github.com/jeremyt135/tictactoe/pkg/tokens"
+)
 
 const (
 	numToWin         int = 3 // number of cells to occupy in a row to win
 	numRows, numCols int = 3, 3
 )
 
-// Board contains grid data for a tictactoe game.
+// Board contains grid data for a tic-tac-toe game.
 type Board struct {
 	grid         [numRows][numCols]string
 	numTokens    int
@@ -16,10 +21,10 @@ type Board struct {
 
 // New creates a pointer to a properly initialized Board.
 func New() (board *Board) {
-	board = &Board{winningToken: tokenEmpty}
+	board = &Board{winningToken: tokens.Empty}
 	for i := 0; i < numRows; i++ {
 		for j := 0; j < numCols; j++ {
-			board.grid[i][j] = tokenEmpty
+			board.grid[i][j] = tokens.Empty
 		}
 	}
 	return
@@ -46,7 +51,7 @@ func (board *Board) IsFull() bool {
 
 // HasWinner returns true if the Board has a winner
 func (board *Board) HasWinner() bool {
-	return board.winningToken != tokenEmpty
+	return board.winningToken != tokens.Empty
 }
 
 // WinningToken returns the winning token value.
@@ -78,7 +83,7 @@ func (board *Board) Put(token string, row, col int) (bool, error) {
 	if !isToken(token) {
 		return false, &TokenError{token}
 	}
-	if board.IsFull() || board.HasWinner() || board.grid[row][col] != tokenEmpty {
+	if board.IsFull() || board.HasWinner() || board.grid[row][col] != tokens.Empty {
 		return false, nil
 	}
 
@@ -96,7 +101,7 @@ func inRange(row, col int) bool {
 }
 
 func isToken(value string) bool {
-	return value == tokenX || value == tokenO
+	return value == tokens.X || value == tokens.O
 }
 
 func (board *Board) sameAt(token string, row, col int) bool {
@@ -222,17 +227,11 @@ func (rangeErr *RangeError) Error() string {
 	return fmt.Sprintf("board index out of range: %v, %v", rangeErr.Row, rangeErr.Col)
 }
 
-const (
-	tokenX     string = "X"
-	tokenO     string = "O"
-	tokenEmpty string = "_"
-)
-
 // TokenError occurs when a token is not valid.
 type TokenError struct {
 	Value string
 }
 
 func (tokenErr *TokenError) Error() string {
-	return fmt.Sprintf("token is invalid: %v, must be one of %v, %v", tokenErr.Value, tokenX, tokenO)
+	return fmt.Sprintf("token is invalid: %v, must be one of %v, %v", tokenErr.Value, tokens.X, tokens.O)
 }
