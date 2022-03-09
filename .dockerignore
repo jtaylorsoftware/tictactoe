@@ -1,0 +1,4 @@
+scripts/
+build/
+.idea/
+.circleci/
