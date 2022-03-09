@@ -1,13 +1,25 @@
-FROM golang:1.14
+FROM golang:1.17 AS base
 
-WORKDIR /go/src/tictactoe
+WORKDIR /usr/src/tictactoe
+
+# download dependencies
+COPY go.mod go.sum ./
+RUN go mod download && go mod verify
+
+# copy over sources
 COPY . .
+
+FROM base AS test
+
+ENTRYPOINT ["go", "test", "./..."]
+
+FROM base AS build
 
 RUN go install -v ./...
 
-FROM alpine:latest
+FROM alpine:latest AS prod
 RUN apk add --no-cache libc6-compat
 WORKDIR /usr/local/bin
-COPY --from=0 /go/bin/tictactoe .
+COPY --from=build /go/bin/tictactoe .
 
-CMD ["./tictactoe"]
+ENTRYPOINT ["./tictactoe"]
