@@ -21,7 +21,7 @@ jobs:
             - ./images
   push-image:
     machine:
-      image: "ubuntu-1604:202004-01"
+      image: ubuntu-2004:202104-01
       docker_layer_caching: true
     environment: 
       IMAGE_TAG: ghcr.io/jtaylorsoftware/tictactoe
