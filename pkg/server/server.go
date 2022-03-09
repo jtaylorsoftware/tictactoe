@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/jeremyt135/tictactoe/pkg/logger"
 	"github.com/jeremyt135/tictactoe/pkg/protocol"
@@ -15,13 +16,12 @@ import (
 // Conn is a generic wrapper for an incoming connection.
 type Conn interface {
 	// Send returns a channel to send the Conn data.
+	// It's expected that the server will close this channel if it
+	// is removing the Conn.
 	Send() chan<- string
 
 	// Receive returns a channel to retrieve data from the Conn.
 	Receive() <-chan string
-
-	// Close hangs up on the connection.
-	Close() error
 }
 
 // Listener supplies a Server with incoming connections.
@@ -30,10 +30,9 @@ type Listener interface {
 	PollAccept() error
 
 	// Connections provides a channel of incoming connections.
+	// It's expected the Listener will close this when it is no longer
+	// capable of sending Conn.
 	Connections() <-chan Conn
-
-	// Close stops the Listener accepting connections and closes resources.
-	Close() error
 }
 
 // Server runs a tic-tac-toe server that accepts bare TCP connections.
@@ -43,6 +42,7 @@ type Server struct {
 	lobbies  []*lobby.Lobby
 	mux      sync.Mutex
 	logger   logger.Logger
+	wg       sync.WaitGroup
 }
 
 func validateOptions(opt *Options) error {
@@ -83,7 +83,6 @@ func NewServer(opt *Options) (*Server, error) {
 
 // Close shuts down a Server.
 func (s *Server) Close() {
-	defer s.listener.Close()
 	s.logger.Info("shutting down")
 }
 
@@ -92,60 +91,93 @@ func (s *Server) Serve(l Listener) error {
 		return errors.New("can not create Server with nil listener")
 	}
 	s.listener = l
-	go s.pollConnections()
-	return s.listener.PollAccept()
+
+	s.wg.Add(2)
+
+	errs := make(chan error, 1)
+	go func() {
+		errs <- s.listener.PollAccept()
+		s.wg.Done()
+	}()
+
+	go func() {
+		s.pollConnections()
+		s.wg.Done()
+	}()
+
+	s.wg.Wait()
+
+	select {
+	case err := <-errs:
+		return err
+	default:
+		return nil
+	}
 }
 
 func (s *Server) pollConnections() {
-	defer s.Close()
-
 	s.logger.Info("server waiting for connections")
 
 	conns := s.listener.Connections()
 	for {
 		c, ok := <-conns
 		if !ok {
+			s.logger.Info("server.listener.Connections closed")
 			break
 		}
-		go s.handleConnection(c)
+
+		s.wg.Add(1)
+		go func() {
+			s.handleConnection(c)
+			s.wg.Done()
+		}()
 	}
+
+	s.logger.Info("server exited pollConnections")
 }
 
 func (s *Server) handleConnection(c Conn) {
 	s.logger.Info("received connection")
 
-	// Wrap in utility NetConn type
-	p := player.New(c.Send(), c.Receive())
-
-	if ok := confirmConnection(p); ok {
+	if ok := confirmConnection(c); ok {
 		l := s.nextAvailableLobby()
 		if l == nil {
 			s.logger.Info("received connection but could not find an open lobby")
-			c.Close()
+			close(c.Send())
 			return
 		}
-		if err := l.AddPlayer(p); err != nil {
+		if err := l.AddPlayer(player.New(c.Send(), c.Receive())); err != nil {
 			s.logger.Error("error adding a client to lobby: ", err)
-			c.Close()
+			close(c.Send())
 			return
 		}
 		s.logger.Info("added a client to lobby ", l.ID())
 	} else {
 		s.logger.Error("received invalid response or could not write to client")
-		c.Close()
+		close(c.Send())
 		return
 	}
 }
 
-func confirmConnection(p *player.Player) bool {
+func confirmConnection(c Conn) bool {
 	// Perform handshake - both sides must send protocol.Greeting
-	p.Send <- protocol.Greeting
-
-	if res, ok := <-p.Receive; !ok || res != protocol.Greeting {
+	select {
+	case c.Send() <- protocol.Greeting:
+	case <-time.After(time.Minute):
+		// Drop slow connections
 		return false
 	}
 
-	return true
+	select {
+	case res, ok := <-c.Receive():
+		if !ok || res != protocol.Greeting {
+			return false
+		}
+		return true
+	case <-time.After(time.Minute):
+		// Drop slow connections
+		return false
+	}
 }
 
 func (s *Server) nextAvailableLobby() (openLobby *lobby.Lobby) {
