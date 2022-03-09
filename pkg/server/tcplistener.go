@@ -39,23 +39,23 @@ func newTcpConn(conn net.Conn, logger logger.Logger) *TcpConn {
 	}
 }
 
-func (t *TcpConn) Send() chan<- string {
-	return t.send
+func (c *TcpConn) Send() chan<- string {
+	return c.send
 }
 
-func (t *TcpConn) Receive() <-chan string {
-	return t.receive
+func (c *TcpConn) Receive() <-chan string {
+	return c.receive
 }
 
-func (t *TcpConn) Close() error {
-	if atomic.LoadInt32(&t.closed) != 0 {
+func (c *TcpConn) Close() error {
+	if atomic.LoadInt32(&c.closed) != 0 {
 		return errors.New("repeated call to Close")
 	}
-	atomic.StoreInt32(&t.closed, 1)
+	atomic.StoreInt32(&c.closed, 1)
 
-	t.receive <- "DISCONNECT"
-	close(t.receive)
-	return t.conn.Close()
+	c.receive <- "DISCONNECT"
+	close(c.receive)
+	return c.conn.Close()
 }
 
 const connDeadlineMinutes = 1
@@ -68,15 +68,15 @@ func isTemporary(err error) bool {
 	return true
 }
 
-func (t *TcpConn) pollSocket() {
-	defer t.Close()
+func (c *TcpConn) pollSocket() {
+	defer c.Close()
 
-	r := bufio.NewReader(t.conn)
+	r := bufio.NewReader(c.conn)
 
 	for {
-		err := t.conn.SetReadDeadline(minutesFromNow(connDeadlineMinutes))
+		err := c.conn.SetReadDeadline(minutesFromNow(connDeadlineMinutes))
 		if err != nil {
-			t.logger.Error("error setting TCP read deadline: ", err)
+			c.logger.Error("error setting TCP read deadline: ", err)
 			if !isTemporary(err) {
 				break
 			}
@@ -86,39 +86,43 @@ func (t *TcpConn) pollSocket() {
 		msg, err := r.ReadString('\n')
 		if err != nil {
 			if !isTemporary(err) {
-				t.logger.Error("error reading from TCP socket: ", err)
+				c.logger.Error("error reading from TCP socket: ", err)
 				break
 			}
 		}
 
-		// Forward to server
-		t.receive <- msg
-	}
-}
-
-func (t *TcpConn) pollMessages() {
-	defer t.Close()
-
-	for {
-		// Read server message
-		msg, ok := <-t.send
-		if !ok {
-			t.logger.Info("could not receive from t.send: closed")
+		if atomic.LoadInt32(&c.closed) != 0 {
 			break
 		}
 
-		err := t.conn.SetWriteDeadline(minutesFromNow(connDeadlineMinutes))
+		// Forward to server
+		c.receive <- msg
+	}
+}
+
+func (c *TcpConn) pollMessages() {
+	defer c.Close()
+
+	for {
+		// Read server message
+		msg, ok := <-c.send
+		if !ok {
+			c.logger.Info("could not receive from c.send: closed")
+			break
+		}
+
+		err := c.conn.SetWriteDeadline(minutesFromNow(connDeadlineMinutes))
 		if err != nil {
-			t.logger.Error("error setting TCP write deadline: ", err)
+			c.logger.Error("error setting TCP write deadline: ", err)
 			if !isTemporary(err) {
 				break
 			}
 		}
 
 		// Forward to client
-		_, err = t.conn.Write([]byte(msg))
+		_, err = c.conn.Write([]byte(msg))
 		if err != nil {
-			t.logger.Error("error writing to TCP socket: ", err)
+			c.logger.Error("error writing to TCP socket: ", err)
 			if !isTemporary(err) {
 				break
 			}
@@ -131,9 +135,9 @@ func (t *TcpConn) pollMessages() {
 	}
 }
 
-func (t *TcpConn) poll() {
-	go t.pollSocket()
-	go t.pollMessages()
+func (c *TcpConn) poll() {
+	go c.pollSocket()
+	go c.pollMessages()
 }
 
 // ListenTcp creates a new TcpListener listening on the given port.
@@ -151,13 +155,13 @@ func ListenTcp(port int, logger logger.Logger) (*TcpListener, error) {
 	}, nil
 }
 
-func (t *TcpListener) PollAccept() error {
-	defer t.Close()
+func (l *TcpListener) PollAccept() error {
+	defer l.Close()
 
-	t.logger.Info("waiting for TCP connections on port ", t.port)
+	l.logger.Info("waiting for TCP connections on port ", l.port)
 
 	for {
-		conn, err := t.listener.Accept()
+		conn, err := l.listener.Accept()
 		if err != nil {
 			if errors.Is(err, syscall.EINVAL) {
 				return fmt.Errorf("accept error (unrecoverable): %w", err)
@@ -166,23 +170,23 @@ func (t *TcpListener) PollAccept() error {
 			if errors.As(err, &ne) && !ne.Temporary() {
 				return fmt.Errorf("accept error (unrecoverable): %w", err)
 			}
-			if t.logger != nil {
-				t.logger.Error("accept error (recovered):", err)
+			if l.logger != nil {
+				l.logger.Error("accept error (recovered):", err)
 			}
 		}
-		tcpConn := newTcpConn(conn, t.logger)
+		tcpConn := newTcpConn(conn, l.logger)
 		go tcpConn.poll()
-		t.connections <- tcpConn
+		l.connections <- tcpConn
 	}
 }
 
-func (t *TcpListener) Connections() <-chan Conn {
-	return t.connections
+func (l *TcpListener) Connections() <-chan Conn {
+	return l.connections
 }
 
-func (t *TcpListener) Close() error {
-	close(t.connections)
-	if err := t.listener.Close(); err != nil {
+func (l *TcpListener) Close() error {
+	close(l.connections)
+	if err := l.listener.Close(); err != nil {
 		return fmt.Errorf("error closing: %w", err)
 	}
 	return nil
