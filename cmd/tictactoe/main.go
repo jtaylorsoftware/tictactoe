@@ -32,7 +32,7 @@ func main() {
 	}
 
 	port := 42000
-	if p, err := strconv.Atoi(os.Getenv("PORT")); err != nil && p != 0 {
+	if p, err := strconv.Atoi(os.Getenv("PORT")); err == nil && p != 0 {
 		port = p
 	}
 
